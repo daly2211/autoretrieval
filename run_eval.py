@@ -69,7 +69,6 @@ def _compute_all_metrics(
     all_chunk_ranges: Dict[str, List[RangeTuple]],
     questions_df: pd.DataFrame,
     retrieval_fn: Callable[[int, str], List[RangeTuple]],
-    retrieve_n: int,
 ) -> Dict[str, float]:
     recall_scores: List[float] = []
     precision_scores: List[float] = []
@@ -81,7 +80,7 @@ def _compute_all_metrics(
         corpus_id: str = row['corpus_id']
 
         ref_ranges: List[RangeTuple] = [(r['start_index'], r['end_index']) for r in references]
-        retrieved = retrieval_fn(idx, corpus_id)[:retrieve_n]
+        retrieved = retrieval_fn(idx, corpus_id)
 
         recall, precision, iou = _score_retrieval(retrieved, ref_ranges)
         recall_scores.append(recall)
@@ -152,7 +151,6 @@ def run_evaluation(
     *,
     corpus_paths: Optional[List[str]] = None,
     questions_csv: Optional[str] = None,
-    retrieve: int = 5,
     pct: float = 100.0,
 ) -> Dict[str, float]:
     corpus_paths = corpus_paths or CORPUS_PATHS
@@ -176,10 +174,9 @@ def run_evaluation(
 
     print(f"Questions: {len(questions_df)}")
     print(f"Corpora: {list(corpora.keys())}")
-    print(f"Retrieve: {retrieve}")
     print()
 
-    pipeline_data = retrieval_pipeline(corpora, questions_df, n=retrieve)
+    pipeline_data = retrieval_pipeline(corpora, questions_df)
 
     all_chunk_ranges: Dict[str, List[RangeTuple]] = {}
     for corpus_id, chunks in pipeline_data['all_chunks'].items():
@@ -195,7 +192,7 @@ def run_evaluation(
     def get_retrieved(idx: int, corpus_id: str) -> List[RangeTuple]:
         return retrieved_ranges.get(corpus_id, {}).get(int(idx), [])
 
-    results = _compute_all_metrics(all_chunk_ranges, questions_df, get_retrieved, retrieve)
+    results = _compute_all_metrics(all_chunk_ranges, questions_df, get_retrieved)
     _print_metrics(results)
     return results
 

@@ -4,7 +4,7 @@ Define your RAG pipeline here: how to chunk, embed, index, and retrieve.
 The eval (run_eval.py) scores the results — it doesn't care how you got them.
 
 You must export:
-    get_retrieval_pipeline()  -> callable(corpora, questions_df, n) -> dict
+    get_retrieval_pipeline()  -> callable(corpora, questions_df) -> dict
 
     Returned dict must have:
         all_chunks:        {corpus_id: [chunk_text, ...]}
@@ -134,8 +134,12 @@ def get_retrieval_pipeline() -> Callable:
     llm_client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
 
     def pipeline(
-        corpora: Dict[str, str], questions_df: pd.DataFrame, n: int = 5,
+        corpora: Dict[str, str], questions_df: pd.DataFrame,
     ) -> Dict[str, Any]:
+        # How many chunks to retrieve per question — the pipeline's choice.
+        # More chunks = potentially higher recall, lower precision/IoU.
+        n_results = 5
+        
         # EphemeralClient is gone every run. When you're iterating on retrieval
         # logic but NOT changing the chunker or embedding model, swap in
         # PersistentClient to cache embeddings across runs and save API costs:
@@ -190,11 +194,11 @@ def get_retrieval_pipeline() -> Callable:
 
                 results = collection.query(
                     query_texts=[question],
-                    n_results=n,
+                    n_results=n_results,
                     where_document=where_doc,
                 )
                 # Pure keyword search (no vectors):
-                #   results = collection.get(where_document=where_doc, limit=n)
+                #   results = collection.get(where_document=where_doc, limit=n_results)
 
                 metas = results['metadatas'][0] if results['metadatas'] else []
                 docs = [m['chunk'] for m in metas]
