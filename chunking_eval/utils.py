@@ -88,3 +88,18 @@ def difference(ranges: List[RangeTuple], target: RangeTuple) -> List[RangeTuple]
         elif end > target_end:
             result.append((target_end, end))
     return result
+
+
+def _safe_name(path: str) -> str:
+    name = path.replace(".", "_").replace("/", "_").replace("\\", "_").strip("_")[:60]
+    if not name or name[0] not in "abcdefghijklmnopqrstuvwxyz0123456789":
+        name = "c_" + name
+    return name
+
+
+def chunks_to_ranges(corpus_text: str, chunks: List[str]) -> List[RangeTuple]:
+    ranges: List[RangeTuple] = []
+    for chunk in chunks:
+        _, start, end = rigorous_document_search(corpus_text, chunk)
+        ranges.append((start, end))
+    return ranges

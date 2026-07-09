@@ -8,6 +8,7 @@ To run:
 
 Your experiment module must export:
     get_retrieval_pipeline()  -> callable(corpora, questions, n) -> dict
+    Returns {all_chunks, retrieved_chunks} where values are chunk text strings.
 """
 
 import argparse
@@ -22,7 +23,7 @@ from dotenv import load_dotenv
 
 from chunking_eval.utils import (
     RangeTuple, sum_of_ranges, union_ranges,
-    intersect_two_ranges, difference,
+    intersect_two_ranges, difference, chunks_to_ranges,
 )
 
 load_dotenv()
@@ -180,12 +181,19 @@ def run_evaluation(
 
     pipeline_data = retrieval_pipeline(corpora, questions_df, n=retrieve)
 
-    all_chunk_ranges = pipeline_data['all_chunk_ranges']
-    retrieved_by_question: Dict[str, Dict[int, List[RangeTuple]]] = \
-        pipeline_data['retrieved_ranges']
+    all_chunk_ranges: Dict[str, List[RangeTuple]] = {}
+    for corpus_id, chunks in pipeline_data['all_chunks'].items():
+        all_chunk_ranges[corpus_id] = chunks_to_ranges(corpora[corpus_id], chunks)
+
+    retrieved_ranges: Dict[str, Dict[int, List[RangeTuple]]] = {}
+    for corpus_id, qmap in pipeline_data['retrieved_chunks'].items():
+        retrieved_ranges[corpus_id] = {}
+        for q_idx, chunks in qmap.items():
+            retrieved_ranges[corpus_id][int(q_idx)] = chunks_to_ranges(
+                corpora[corpus_id], chunks)
 
     def get_retrieved(idx: int, corpus_id: str) -> List[RangeTuple]:
-        return retrieved_by_question.get(corpus_id, {}).get(int(idx), [])
+        return retrieved_ranges.get(corpus_id, {}).get(int(idx), [])
 
     results = _compute_all_metrics(all_chunk_ranges, questions_df, get_retrieved, retrieve)
     _print_metrics(results)
