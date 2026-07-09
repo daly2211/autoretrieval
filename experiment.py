@@ -31,13 +31,18 @@ from chunking_eval.utils import _safe_name
 load_dotenv()
 
 # Config
-
+# You can try different embedding models:
+#   EMBEDDING_MODEL = "openai/text-embedding-3-small"
+#   EMBEDDING_MODEL = "sentence-transformers/all-minilm-l6-v2"
 EMBEDDING_MODEL = "openai/text-embedding-3-large"
 
+# Set to False to skip LLM keyword extraction and use pure vector search
+USE_KEYWORD_FILTER = True
 # Small model for keyword extraction — keeps costs minimal
 KEYWORD_MODEL = "openai/gpt-4o-mini"
 
 # Chunkers — define your splitting strategies here
+# The only requirement: subclass BaseChunker and implement split_text(text) -> List[str]
 
 class BaseChunker(ABC):
     @abstractmethod
@@ -46,7 +51,8 @@ class BaseChunker(ABC):
 
 
 class SentenceChunker(BaseChunker):
-    """Split text on sentence boundaries, grouping N sentences per chunk."""
+    """Split text on sentence boundaries, grouping N sentences per chunk.
+    Try: 5, 20 — smaller chunks = higher precision, larger = higher recall."""
 
     def __init__(self, sentences_per_chunk: int = 10) -> None:
         self.sentences_per_chunk = sentences_per_chunk
@@ -62,7 +68,20 @@ class SentenceChunker(BaseChunker):
         return chunks
 
 
+# Alternate: simple fixed-size character chunker
+# class CharChunker(BaseChunker):
+#     """Split every N characters. Try: 500, 1000, 2000."""
+#     def __init__(self, chunk_size: int = 1000) -> None:
+#         self.chunk_size = chunk_size
+#     def split_text(self, text: str) -> List[str]:
+#         return [text[i:i + self.chunk_size]
+#                 for i in range(0, len(text), self.chunk_size)]
+
+
 # Embedding
+# Swapping models: just change model_name. Chroma handles the rest.
+# No embedding at all? Remove the embedding_function param from create_collection
+#   and switch .query() to use chroma's built-in full-text search (.get with where_document).
 
 def _get_embedding_function(
     model_name: str, api_key: str,
@@ -74,27 +93,30 @@ def _get_embedding_function(
     )
 
 
-# Keyword extraction — uses a small LLM to pull search terms from questions
 
-_KEYWORD_PROMPT = (
-    "Extract 1-3 key search terms from this question. "
-    "Return only the terms as a comma-separated list, no other text.\n\n"
-    "Question: {question}"
-)
 
 
 def _extract_keywords(client: OpenAI, question: str) -> List[str]:
+    # Keyword extraction — uses a small LLM to pull search terms from questions
+
+    _KEYWORD_PROMPT = (
+        "Extract 1-3 key search terms from this question. "
+        "Return only the terms as a comma-separated list, no other text.\n\n"
+        "Question: {question}"
+    )
+
     response = client.chat.completions.create(
         model=KEYWORD_MODEL,
         messages=[{"role": "user", "content": _KEYWORD_PROMPT.format(question=question)}],
-        max_tokens=30,
+        max_tokens=40,
         temperature=0,
     )
     text = response.choices[0].message.content or ""
     return [t.strip().lower() for t in text.split(",") if t.strip()]
 
 
-# Retrieval pipeline — the thing the eval scores
+# Retrieval pipeline - the thing the eval scores
+# The only contract: return {all_chunks, retrieved_chunks} as text.
 
 def get_retrieval_pipeline() -> Callable:
     """Build the default chromadb-based retrieval pipeline.
@@ -108,11 +130,16 @@ def get_retrieval_pipeline() -> Callable:
 
     chunker = SentenceChunker(sentences_per_chunk=10)
     ef = _get_embedding_function(EMBEDDING_MODEL, api_key)
+    
     llm_client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
 
     def pipeline(
         corpora: Dict[str, str], questions_df: pd.DataFrame, n: int = 5,
     ) -> Dict[str, Any]:
+        # EphemeralClient is gone every run. When you're iterating on retrieval
+        # logic but NOT changing the chunker or embedding model, swap in
+        # PersistentClient to cache embeddings across runs and save API costs:
+        #   client = chromadb.PersistentClient(path="./chroma_cache")
         client = chromadb.EphemeralClient()
 
         all_chunks: Dict[str, List[str]] = {}
@@ -120,10 +147,11 @@ def get_retrieval_pipeline() -> Callable:
 
         for corpus_id, corpus_text in corpora.items():
             collection_name = _safe_name(corpus_id)
-            try:
-                client.delete_collection(collection_name)
-            except Exception:
-                pass
+            # When using PersistentClient, delete the old collection between
+            # chunker/embedding changes to avoid stale data:
+            #   try: client.delete_collection(collection_name)
+            #   except Exception: pass
+            # For pure keyword search (no vectors): skip embedding_function, use .get()
             collection = client.create_collection(
                 collection_name, embedding_function=ef,
                 metadata={"hnsw:search_ef": 50})
@@ -149,19 +177,25 @@ def get_retrieval_pipeline() -> Callable:
             retrieved_chunks[corpus_id] = {}
             for row_idx, row in corpus_questions.iterrows():
                 question = row['question']
-                keywords = _extract_keywords(llm_client, question)
 
+                # Keyword extraction + filtering. Set USE_KEYWORD_FILTER = False
+                # at the top to skip this and use pure vector search.
                 where_doc = None
-                if len(keywords) == 1:
-                    where_doc = {"$contains": keywords[0]}
-                elif len(keywords) > 1:
-                    where_doc = {"$or": [{"$contains": kw} for kw in keywords]}
+                if USE_KEYWORD_FILTER:
+                    keywords = _extract_keywords(llm_client, question)
+                    if len(keywords) == 1:
+                        where_doc = {"$contains": keywords[0]}
+                    elif len(keywords) > 1:
+                        where_doc = {"$or": [{"$contains": kw} for kw in keywords]}
 
                 results = collection.query(
                     query_texts=[question],
                     n_results=n,
                     where_document=where_doc,
                 )
+                # Pure keyword search (no vectors):
+                #   results = collection.get(where_document=where_doc, limit=n)
+
                 metas = results['metadatas'][0] if results['metadatas'] else []
                 docs = [m['chunk'] for m in metas]
                 retrieved_chunks[corpus_id][int(row_idx)] = docs
