@@ -29,7 +29,7 @@ Edit `CORPUS` and `OUTPUT_CSV` at the top of that script, then point `CORPUS_PAT
 
 ## Metrics
 
-All scores are character-level overlap between retrieved chunks and ground-truth highlights.
+All scores are character-level overlap between retrieved chunks and ground-truth highlights. The eval also prints average retrieved characters per question to help compare response sizes across runs.
 
 | Metric | What it measures |
 |---|---|
@@ -37,3 +37,4 @@ All scores are character-level overlap between retrieved chunks and ground-truth
 | **Precision** | How much of the retrieved text was actually relevant |
 | **IoU** | Balanced single score — the best overall target |
 | **Precision-Omega** | Chunker quality independent of retrieval |
+| **Avg retrieved chars** | Average character length of retrieved chunks per question |

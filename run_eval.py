@@ -142,6 +142,7 @@ def _print_metrics(results: Dict[str, float]) -> None:
     for metric in ['Recall', 'Precision', 'Precision-Omega', 'IoU']:
         key = metric.lower().replace('-', '_')
         print(f"{metric}: {results[f'{key}_mean']:.4f} +/- {results[f'{key}_std']:.4f}")
+    print(f"Avg retrieved chars: {results['avg_retrieved_chars']:.0f}")
 
 
 # Public entry point
@@ -193,6 +194,17 @@ def run_evaluation(
         return retrieved_ranges.get(corpus_id, {}).get(int(idx), [])
 
     results = _compute_all_metrics(all_chunk_ranges, questions_df, get_retrieved)
+
+    # Average retrieved length per question (chars)
+    total_retrieved = 0
+    total_questions = 0
+    for qmap in retrieved_ranges.values():
+        for ranges in qmap.values():
+            total_retrieved += sum_of_ranges(ranges)
+            total_questions += 1
+    avg_retrieved_chars = total_retrieved / total_questions if total_questions > 0 else 0.0
+    results['avg_retrieved_chars'] = avg_retrieved_chars
+
     _print_metrics(results)
     return results
 

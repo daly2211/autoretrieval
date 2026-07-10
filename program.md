@@ -74,6 +74,7 @@ Recall: 0.4800 +/- 0.4193
 Precision: 0.0194 +/- 0.0182
 Precision-Omega: 0.1325 +/- 0.0838
 IoU: 0.0193 +/- 0.0183
+Avg retrieved chars: 10971
 ```
 
 ## Logging results
@@ -83,7 +84,7 @@ When an experiment is done, log it to `results.tsv` (tab-separated, NOT commas).
 The TSV has these columns:
 
 ```
-commit	iou	precision_omega	recall	precision	status	description
+commit	iou	precision_omega	recall	precision	avg_chars	status	description
 ```
 
 1. git commit hash (short, 7 chars)
@@ -91,17 +92,18 @@ commit	iou	precision_omega	recall	precision	status	description
 3. Precision-Omega (mean) — use 0.0000 for crashes
 4. Recall (mean) — use 0.0000 for crashes
 5. Precision (mean) — use 0.0000 for crashes
-6. status: `keep`, `discard`, or `crash`
-7. short description of what this experiment tried
+6. Avg retrieved chars per question — use 0 for crashes
+7. status: `keep`, `discard`, or `crash`
+8. short description of what this experiment tried
 
 Example:
 
 ```
-commit	iou	precision_omega	recall	precision	status	description
-a1b2c3d	0.0193	0.1325	0.4800	0.0194	keep	baseline (10 sentences, text-embedding-3-large, keyword filter)
-b2c3d4e	0.0221	0.1412	0.5120	0.0201	keep	switch to 5 sentences per chunk
-c3d4e5f	0.0180	0.1301	0.4600	0.0185	discard	switch to text-embedding-3-small
-d4e5f6g	0.0000	0.0000	0.0000	0.0000	crash	remove keyword model entirely
+commit	iou	precision_omega	recall	precision	avg_chars	status	description
+a1b2c3d	0.0193	0.1325	0.4800	0.0194	10971	keep	baseline (10 sentences, text-embedding-3-large, keyword filter)
+b2c3d4e	0.0221	0.1412	0.5120	0.0201	5840	keep	switch to 5 sentences per chunk
+c3d4e5f	0.0180	0.1301	0.4600	0.0185	11002	discard	switch to text-embedding-3-small
+d4e5f6g	0.0000	0.0000	0.0000	0.0000	0	crash	remove keyword model entirely
 ```
 
 Do not commit `results.tsv` — leave it untracked.
@@ -114,13 +116,18 @@ LOOP FOREVER:
 
 1. Look at git state: current branch/commit.
 2. Change one thing in `experiment.py`. Chunk size, embedding model, keyword toggle, chunker type. One variable.
-3. `git commit`
-4. Run: `python run_eval.py`
-5. Record the results in `results.tsv`.
-6. If IoU improved → keep the commit. If equal or worse → `git reset --hard HEAD~1` to discard.
-7. Repeat.
+3. `git commit -m "description of change"`
+4. `python run_eval.py` — capture the 5 numbers from the output.
+5. Run the judge with the captured numbers:
+   ```
+   python judge.py --iou 0.0193 --precision_omega 0.1325 --recall 0.4800 --precision 0.0194 --avg_chars 10971
+   ```
+   The judge reads `results.tsv`, compares against previously kept runs, and prints reasoning plus KEEP or DISCARD. It exits 0 for KEEP, 1 for DISCARD.
+6. Append a row to `results.tsv` with `keep` or `discard` as the status and the short commit hash.
+7. If DISCARD: `git reset --hard HEAD~1`. If KEEP: nothing, you're already on the commit.
+8. Repeat.
 
-**First run**: run as-is to establish the baseline.
+**First run**: run as-is to establish the baseline — the judge will always say KEEP when there are no prior kept rows.
 
 **Crashes**: if a run crashes, fix trivial bugs and re-run. If the idea itself is fundamentally broken, log "crash" and move on.
 
