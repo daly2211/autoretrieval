@@ -28,7 +28,7 @@ from chunking_eval.utils import (
 
 load_dotenv()
 
-# Eval settings — what data to score against
+# Eval settings: what data to score against
 
 CORPUS_PATHS: List[str] = [
     "./domain_specific_example/nvidia_10k.txt",
@@ -36,10 +36,26 @@ CORPUS_PATHS: List[str] = [
 
 QUESTIONS_CSV: str = "./domain_specific_example/generated_queries_and_excerpts.csv"
 
+# F-beta - beta > 1 favors recall, beta < 1 favors precision, beta = 1.0 is the F1 score
+F_BETA: float = 2.0
+
 PCT: float = 100.0
 
-# Token-level scoring
 
+
+def f_beta_score(precision: float, recall: float, beta: float = F_BETA) -> float:
+    """Calculate the F-beta score.
+    
+    beta > 1 favors recall, beta < 1 favors precision, beta = 1.0 is F1.
+    """
+    if precision == 0.0 and recall == 0.0:
+        return 0.0
+    beta_squared = beta ** 2
+    numerator = (1 + beta_squared) * precision * recall
+    denominator = (beta_squared * precision) + recall
+    return numerator / denominator
+
+# Token-level scoring
 def _score_retrieval(
     retrieved_ranges: List[RangeTuple], reference_ranges: List[RangeTuple],
 ) -> Tuple[float, float, float]:
@@ -104,6 +120,11 @@ def _compute_all_metrics(
         prec_omega = num_len / omega_denom_len if omega_denom_len > 0 else 0.0
         prec_omega_scores.append(prec_omega)
 
+    f_beta_scores: List[float] = [
+        f_beta_score(p, r, F_BETA)
+        for p, r in zip(precision_scores, recall_scores)
+    ]
+
     return {
         'recall_mean': float(np.mean(recall_scores)),
         'recall_std': float(np.std(recall_scores)),
@@ -113,6 +134,8 @@ def _compute_all_metrics(
         'iou_std': float(np.std(iou_scores)),
         'precision_omega_mean': float(np.mean(prec_omega_scores)),
         'precision_omega_std': float(np.std(prec_omega_scores)),
+        'f_beta_mean': float(np.mean(f_beta_scores)),
+        'f_beta_std': float(np.std(f_beta_scores)),
     }
 
 
@@ -142,6 +165,7 @@ def _print_metrics(results: Dict[str, float]) -> None:
     for metric in ['Recall', 'Precision', 'Precision-Omega', 'IoU']:
         key = metric.lower().replace('-', '_')
         print(f"{metric}: {results[f'{key}_mean']:.4f} +/- {results[f'{key}_std']:.4f}")
+    print(f"F-beta (B={F_BETA:.1f}): {results['f_beta_mean']:.4f} +/- {results['f_beta_std']:.4f}")
     print(f"Avg retrieved chars: {results['avg_retrieved_chars']:.0f}")
 
 
