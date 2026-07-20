@@ -77,3 +77,10 @@ Built on techniques and code from:
 ## License
 
 MIT
+
+<p align="center">
+  <br><br>
+  <a href="https://answerhub.co?ref=github"><img src="assets/answerhub.png" alt="AnswerHub" width="200" /></a>
+  <br/>
+  <sub>Open-sourced from the <a href="https://answerhub.co?ref=github">AnswerHub</a> codebase.</sub>
+</p>
