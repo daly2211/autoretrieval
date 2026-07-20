@@ -20,8 +20,8 @@ The repo is deliberately kept small and really has four files that matter:
 
 - **`experiment.py`** - the single file the agent edits. Contains the chunker, embedding model, keyword filtering, and retrieval logic. Everything is fair game. **This file is edited and iterated on by the agent**.
 - **`run_eval.py`** - fixed scoring engine. Computes character-level overlap between retrieved chunks and ground-truth reference highlights.
-- **`program.md`** — baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
-- **`generate_dataset.py`** — generates question/reference-highlight pairs from any corpus. You can use this to create your own evaluation dataset.
+- **`program.md`** - baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
+- **`generate_dataset.py`** - generates question/reference-highlight pairs from any corpus. You can use this to create your own evaluation dataset.
 
 By design, the optimization target is **F-beta** (default β=2.0, which favors recall over precision). This means the agent prioritizes capturing relevant text — you can change `F_BETA` in `run_eval.py` to favor precision (β < 1) or be balanced (β = 1.0, the standard F1 score). All metrics are character-level overlap between retrieved chunks and ground-truth highlights, making them independent of your chunking strategy.
 
